@@ -11,19 +11,26 @@ internal static class ClockGui
   private const int PebbleId = 0x53535731;
   private const int PanelId = 0x53535732;
   private const float Pebble = 48f;
-  private const float PanelW = 268f;
-  private const float PanelH = 128f;
+  /// <summary>Content width: three 64px buttons + button margins + box pad (was 252 — fat L/R).</summary>
+  private const float PanelW = 204f;
+  private const float PanelH = 96f;
   private const float Gap = 6f;
-  private const float MinimapMargin = 12f;
+  private const float RowH = 22f;
+  private const float RowGap = 3f;
+  /// <summary>Gap below minimap bottom (clockTest4: +100 from original 12).</summary>
+  private const float MinimapGapY = 112f;
 
   private static readonly Color Bg = new(0.07f, 0.07f, 0.08f, 0.92f);
   private static readonly Color PlayOn = new(0.2f, 0.55f, 0.28f, 1f);
   private static readonly Color PauseOn = new(0.7f, 0.55f, 0.12f, 1f);
   private static readonly Color StopCol = new(0.65f, 0.22f, 0.18f, 1f);
   private static readonly Color Dim = new(0.22f, 0.2f, 0.18f, 1f);
+  private static readonly Color Glyph = new(0.92f, 0.9f, 0.82f, 1f);
 
   private static Rect _pebble;
   private static Rect _panel;
+  private static Vector2 _pebblePos;
+  private static bool _pebblePosReady;
   private static bool _stylesReady;
   private static GUIStyle _box = null!;
   private static GUIStyle _label = null!;
@@ -38,13 +45,21 @@ internal static class ClockGui
   private static Texture2D? _texPlay;
   private static Texture2D? _texPause;
   private static Texture2D? _texStop;
+  private static Texture2D? _texGlyph;
+  private static Texture2D? _texRing;
   private static bool _dragged;
   private static Vector2 _posAtMouseDown;
-  private static bool _defaultParkTried;
-  private static float _defaultParkSince = -1f;
+  private static bool _minimapSnapDone;
+  private static float _minimapSnapSince = -1f;
 
   internal static bool PointerOver { get; private set; }
   internal static bool Dragging { get; private set; }
+
+  private static bool OffScreen(Vector2 pos)
+  {
+    return pos.x < -Pebble || pos.y < -Pebble
+      || pos.x > Screen.width || pos.y > Screen.height;
+  }
 
   internal static void Draw()
   {
@@ -52,28 +67,38 @@ internal static class ClockGui
     {
       PointerOver = false;
       Dragging = false;
+      _minimapSnapDone = false;
+      _minimapSnapSince = -1f;
+      _pebblePosReady = false;
+      // Next world load starts expanded (F1 hint visible); park still from cfg.
+      UiState.Folded = false;
       return;
     }
 
     EnsureStyles();
-    EnsureDefaultPark();
-    if (Settings.NeedsDefaultPark)
+    EnsurePark();
+
+    if (!_pebblePosReady)
     {
-      // Waiting for minimap (or fallback) — avoid parking on top of it at a stale cfg.
-      PointerOver = false;
-      Dragging = false;
-      return;
+      var saved = Settings.HudPosition;
+      _pebblePos = OffScreen(saved) || Settings.WantsMinimapSnap
+        ? new Vector2(Mathf.Max(20f, Screen.width - 80f), 220f)
+        : saved;
+      _pebblePosReady = true;
     }
 
-    var pos = Settings.HudPosition;
-    _pebble = new Rect(pos.x, pos.y, Pebble, Pebble);
+    _pebble = new Rect(_pebblePos.x, _pebblePos.y, Pebble, Pebble);
 
     var prev = GUI.backgroundColor;
     GUI.backgroundColor = Bg;
     _pebble = GUI.Window(PebbleId, _pebble, DrawPebbleWindow, GUIContent.none, _box);
     GUI.backgroundColor = prev;
 
-    PersistPebble(_pebble.position);
+    _pebblePos = _pebble.position;
+    if (!Dragging)
+    {
+      PersistPebble(_pebblePos);
+    }
 
     if (!UiState.Folded)
     {
@@ -87,39 +112,67 @@ internal static class ClockGui
     PointerOver = _pebble.Contains(screenMouse) || (!UiState.Folded && _panel.Contains(screenMouse));
   }
 
-  private static void EnsureDefaultPark()
+  private static void EnsurePark()
   {
-    if (!Settings.NeedsDefaultPark)
+    if (_minimapSnapDone)
     {
+      // CM Reset / typing -1 mid-session: allow another snap.
+      if (Settings.WantsMinimapSnap)
+      {
+        _minimapSnapDone = false;
+        _minimapSnapSince = -1f;
+      }
+      else
+      {
+        return;
+      }
+    }
+
+    var saved = Settings.HudPosition;
+    var needSnap = Settings.WantsMinimapSnap || OffScreen(saved);
+    if (!needSnap)
+    {
+      _minimapSnapDone = true;
       return;
     }
 
-    if (_defaultParkSince < 0f)
+    if (_minimapSnapSince < 0f)
     {
-      _defaultParkSince = Time.unscaledTime;
+      _minimapSnapSince = Time.unscaledTime;
     }
 
     var below = TryBelowMinimap();
     if (below.HasValue)
     {
       Settings.HudPosition = below.Value;
-      SessionStopwatchPlugin.LogAt(BepInEx.Logging.LogLevel.Info,
-        $"HUD parked below minimap at ({below.Value.x:0},{below.Value.y:0}).");
+      _pebblePos = below.Value;
+      _pebblePosReady = true;
+      _minimapSnapDone = true;
       return;
     }
 
-    // Minimap not ready yet — wait a few seconds, then fall back once.
-    if (_defaultParkTried || Time.unscaledTime - _defaultParkSince < 5f)
+    if (Time.unscaledTime - _minimapSnapSince < 5f)
     {
       return;
     }
 
-    _defaultParkTried = true;
-    Settings.HudPosition = new Vector2(Mathf.Max(20f, Screen.width - 80f), 220f);
-    SessionStopwatchPlugin.LogAt(BepInEx.Logging.LogLevel.Info,
-      "HUD park fallback (minimap not ready); drag the pebble if needed.");
+    _minimapSnapDone = true;
+    if (!_pebblePosReady)
+    {
+      var fallback = new Vector2(Mathf.Max(20f, Screen.width - 80f), 220f);
+      Settings.HudPosition = fallback;
+      _pebblePos = fallback;
+      _pebblePosReady = true;
+      SessionStopwatchPlugin.LogAt(BepInEx.Logging.LogLevel.Info,
+        "HUD park fallback (minimap not ready); drag the pebble if needed.");
+    }
   }
 
+  /// <summary>
+  /// Align pebble <b>right edge</b> to small-minimap <b>right edge</b>
+  /// (<see cref="Minimap.m_mapImageSmall"/> world corners: 3 = bottom-right).
+  /// Writes real positive X/Y into cfg (so CM Reset to -1 then snap does not stay at -1).
+  /// </summary>
   private static Vector2? TryBelowMinimap()
   {
     if (Minimap.instance == null || Minimap.instance.m_mapImageSmall == null)
@@ -135,17 +188,23 @@ internal static class ClockGui
 
     var corners = new Vector3[4];
     map.GetWorldCorners(corners);
-    // Overlay canvas: world Y is screen Y from bottom.
-    var midX = (corners[0].x + corners[3].x) * 0.5f - Pebble * 0.5f;
-    var bottomGuiY = Screen.height - corners[0].y + MinimapMargin;
-    return new Vector2(Mathf.Clamp(midX, 8f, Screen.width - Pebble - 8f),
-      Mathf.Clamp(bottomGuiY, 8f, Screen.height - Pebble - 8f));
+    var mapRightX = corners[3].x;
+    var mapBottomGuiY = Screen.height - corners[0].y;
+    var pebbleX = mapRightX - Pebble;
+    var pebbleY = mapBottomGuiY + MinimapGapY;
+    var pos = new Vector2(
+      Mathf.Clamp(pebbleX, 8f, Screen.width - Pebble - 8f),
+      Mathf.Clamp(pebbleY, 8f, Screen.height - Pebble - 8f));
+
+    SessionStopwatchPlugin.LogAt(BepInEx.Logging.LogLevel.Info,
+      $"HUD park from minimap: mapRightX={mapRightX:0.#} mapBottomGuiY={mapBottomGuiY:0.#} " +
+      $"pebbleTL=({pos.x:0},{pos.y:0}) pebbleRight={pos.x + Pebble:0} gapY={MinimapGapY} screen={Screen.width}x{Screen.height}.");
+    return pos;
   }
 
   private static void PersistPebble(Vector2 pos)
   {
-    // Do not lock in a transient rect while we are still waiting to snap below the minimap.
-    if (Settings.NeedsDefaultPark)
+    if (!_minimapSnapDone && (Settings.WantsMinimapSnap || OffScreen(Settings.HudPosition)))
     {
       return;
     }
@@ -194,36 +253,53 @@ internal static class ClockGui
         }
 
         Dragging = false;
+        PersistPebble(_pebble.position);
         e.Use();
       }
     }
 
-    var blink = Clock.IsTicking && Mathf.Repeat(Time.unscaledTime, 2f) >= 1f;
-    var old = GUI.color;
-    if (blink)
+    DrawClockGlyph(new Rect(6f, 6f, Pebble - 12f, Pebble - 12f));
+    GUI.DragWindow(new Rect(0f, 0f, Pebble, Pebble));
+  }
+
+  private static void DrawClockGlyph(Rect area)
+  {
+    if (_texRing != null)
     {
-      GUI.color = new Color(1f, 1f, 1f, 0.35f);
+      GUI.DrawTexture(area, _texRing);
     }
 
-    GUI.Label(new Rect(4f, 4f, Pebble - 8f, Pebble - 8f), "S", _btn);
-    GUI.color = old;
-    // Whole pebble is the drag handle; click vs drag decided on MouseUp above.
-    GUI.DragWindow(new Rect(0f, 0f, Pebble, Pebble));
+    if (_texGlyph == null)
+    {
+      return;
+    }
+
+    var cx = area.x + area.width * 0.5f;
+    var cy = area.y + area.height * 0.5f;
+    var sec = (int)Clock.ActiveSeconds;
+    var ang = (sec % 60) / 60f * 360f;
+    var matrix = GUI.matrix;
+    GUIUtility.RotateAroundPivot(ang, new Vector2(cx, cy));
+    GUI.DrawTexture(new Rect(cx - 1f, cy - area.height * 0.32f, 2f, area.height * 0.32f), _texGlyph);
+    GUI.matrix = matrix;
+    GUI.DrawTexture(new Rect(cx - 2f, cy - 2f, 4f, 4f), _texGlyph);
   }
 
   private static void DrawPanelWindow(int id)
   {
-    GUILayout.Space(2f);
-    GUILayout.BeginHorizontal();
+    GUILayout.BeginVertical();
+
+    GUILayout.BeginHorizontal(GUILayout.Height(RowH));
     GUILayout.FlexibleSpace();
-    GUILayout.Label(Clock.ActiveDisplay, _time);
+    GUILayout.Label(Clock.ActiveDisplay, _time, GUILayout.Height(RowH));
     GUILayout.FlexibleSpace();
     GUILayout.EndHorizontal();
 
-    GUILayout.BeginHorizontal();
+    GUILayout.BeginHorizontal(GUILayout.Height(RowH));
+    GUILayout.FlexibleSpace();
     var ticking = Clock.IsTicking;
     var paused = Clock.HasSitting && !ticking;
-    if (GUILayout.Button("►", ticking ? _btnPlay : _btn, GUILayout.Height(28f), GUILayout.Width(72f)))
+    if (GUILayout.Button("►", ticking ? _btnPlay : _btn, GUILayout.Height(RowH), GUILayout.Width(64f)))
     {
       if (!Clock.HasSitting || Clock.ManualPaused || !Clock.IsTicking)
       {
@@ -231,34 +307,46 @@ internal static class ClockGui
       }
     }
 
-    if (GUILayout.Button("||", paused ? _btnPause : _btn, GUILayout.Height(28f), GUILayout.Width(72f)))
+    if (GUILayout.Button("||", paused ? _btnPause : _btn, GUILayout.Height(RowH), GUILayout.Width(64f)))
     {
       Clock.Pause();
     }
 
-    if (GUILayout.Button("■", _btnStop, GUILayout.Height(28f), GUILayout.Width(72f)))
+    if (GUILayout.Button("■", _btnStop, GUILayout.Height(RowH), GUILayout.Width(64f)))
     {
-      Clock.Stop();
+      Clock.Stop("stop");
     }
 
+    GUILayout.FlexibleSpace();
     GUILayout.EndHorizontal();
 
-    GUILayout.BeginHorizontal();
-    GUILayout.Label("AFK timer", _label, GUILayout.Width(78f));
-    if (GUILayout.Button("-", _btn, GUILayout.Width(28f), GUILayout.Height(22f)))
+    GUILayout.Space(RowGap);
+
+    GUILayout.BeginHorizontal(GUILayout.Height(RowH));
+    GUILayout.FlexibleSpace();
+    GUILayout.Label("AFK timer", _label, GUILayout.Width(70f), GUILayout.Height(RowH));
+    if (GUILayout.Button("-", _btn, GUILayout.Width(22f), GUILayout.Height(RowH)))
     {
       NudgeAfk(-Settings.AfkStepSeconds);
     }
 
-    GUILayout.Label(SittingLog.FormatDuration(Settings.AfkTimeoutSeconds), _label, GUILayout.Width(72f));
-    if (GUILayout.Button("+", _btn, GUILayout.Width(28f), GUILayout.Height(22f)))
+    GUILayout.Label(SittingLog.FormatDuration(Settings.AfkTimeoutSeconds), _label,
+      GUILayout.Width(64f), GUILayout.Height(RowH));
+    if (GUILayout.Button("+", _btn, GUILayout.Width(22f), GUILayout.Height(RowH)))
     {
       NudgeAfk(Settings.AfkStepSeconds);
     }
 
+    GUILayout.FlexibleSpace();
     GUILayout.EndHorizontal();
 
-    GUILayout.Label("Ctrl+F1 shows the cursor", _hint);
+    GUILayout.BeginHorizontal(GUILayout.Height(RowH));
+    GUILayout.FlexibleSpace();
+    GUILayout.Label("Ctrl+F1 shows the cursor", _hint, GUILayout.Height(RowH));
+    GUILayout.FlexibleSpace();
+    GUILayout.EndHorizontal();
+
+    GUILayout.EndVertical();
   }
 
   private static void NudgeAfk(int delta)
@@ -280,28 +368,36 @@ internal static class ClockGui
     _texPlay = Solid(PlayOn);
     _texPause = Solid(PauseOn);
     _texStop = Solid(StopCol);
+    _texGlyph = Solid(Glyph);
+    _texRing = BakeRing(Glyph);
 
-    _box = new GUIStyle(GUI.skin.window)
+    // box (not window) — avoids IMGUI title-bar dead space that inflated bottom/side margins.
+    _box = new GUIStyle(GUI.skin.box)
     {
       normal = { background = _texBg, textColor = Color.white },
       onNormal = { background = _texBg, textColor = Color.white },
-      border = new RectOffset(6, 6, 6, 6),
-      padding = new RectOffset(6, 6, 6, 6)
+      border = new RectOffset(1, 1, 1, 1),
+      padding = new RectOffset(3, 3, 3, 3),
+      margin = new RectOffset(0, 0, 0, 0),
+      overflow = new RectOffset(0, 0, 0, 0)
     };
 
     _label = new GUIStyle(GUI.skin.label)
     {
       alignment = TextAnchor.MiddleCenter,
-      fontSize = 13,
+      fontSize = 12,
+      padding = new RectOffset(0, 0, 0, 0),
+      margin = new RectOffset(0, 0, 0, 0),
       normal = { textColor = new Color(0.9f, 0.88f, 0.8f) }
     };
 
-    _time = new GUIStyle(_label) { fontSize = 18, fontStyle = FontStyle.Bold };
+    _time = new GUIStyle(_label) { fontSize = 16, fontStyle = FontStyle.Bold };
 
     _hint = new GUIStyle(_label)
     {
-      fontSize = 11,
-      normal = { textColor = new Color(0.65f, 0.62f, 0.55f) }
+      fontSize = 12,
+      fontStyle = FontStyle.Bold,
+      normal = { textColor = new Color(0.92f, 0.88f, 0.55f) }
     };
 
     _btn = ButtonStyle(_texDim, Color.white);
@@ -315,14 +411,15 @@ internal static class ClockGui
   {
     return new GUIStyle(GUI.skin.button)
     {
-      fontSize = 16,
+      fontSize = 13,
       fontStyle = FontStyle.Bold,
       alignment = TextAnchor.MiddleCenter,
       normal = { background = bg, textColor = text },
       hover = { background = bg, textColor = text },
       active = { background = bg, textColor = text },
       onNormal = { background = bg, textColor = text },
-      padding = new RectOffset(4, 4, 2, 2)
+      padding = new RectOffset(0, 0, 0, 0),
+      margin = new RectOffset(1, 1, 0, 0)
     };
   }
 
@@ -330,6 +427,29 @@ internal static class ClockGui
   {
     var t = new Texture2D(2, 2, TextureFormat.ARGB32, false);
     t.SetPixels(new[] { c, c, c, c });
+    t.Apply();
+    return t;
+  }
+
+  private static Texture2D BakeRing(Color c)
+  {
+    const int n = 64;
+    var t = new Texture2D(n, n, TextureFormat.ARGB32, false);
+    var clear = new Color(0, 0, 0, 0);
+    var cx = (n - 1) * 0.5f;
+    var outer = cx - 1f;
+    var inner = outer - 3.5f;
+    for (var y = 0; y < n; y++)
+    {
+      for (var x = 0; x < n; x++)
+      {
+        var dx = x - cx;
+        var dy = y - cx;
+        var r = Mathf.Sqrt((dx * dx) + (dy * dy));
+        t.SetPixel(x, y, r <= outer && r >= inner ? c : clear);
+      }
+    }
+
     t.Apply();
     return t;
   }

@@ -11,7 +11,7 @@ namespace Session_Stopwatch;
 public class SessionStopwatchPlugin : BaseUnityPlugin
 {
   internal const string ModName = "Session_Stopwatch";
-  internal const string ModVersion = "0.2.3";
+  internal const string ModVersion = "0.2.9";
   /// <summary>Jere-style snake_case GUID. Thunderstore author when published: Zeall.</summary>
   internal const string ModGUID = "session_stopwatch";
 
@@ -49,7 +49,15 @@ public class SessionStopwatchPlugin : BaseUnityPlugin
 
     Settings.Init(Config);
     Clock.Load();
-    _harmony.PatchAll(Assembly.GetExecutingAssembly());
+    try
+    {
+      _harmony.PatchAll(Assembly.GetExecutingAssembly());
+    }
+    catch (System.Exception ex)
+    {
+      Log.LogError($"Harmony PatchAll failed — HUD may lack input capture: {ex}");
+    }
+
     _loaded = true;
     LogAt(LogLevel.Info, $"{ModName} v{ModVersion} loaded (GUID {ModGUID}).");
   }
@@ -69,6 +77,15 @@ public class SessionStopwatchPlugin : BaseUnityPlugin
     if (_loaded)
     {
       ClockGui.Draw();
+    }
+  }
+
+  private void OnApplicationQuit()
+  {
+    // Fallback if Game.OnApplicationQuit Harmony missed; primary quit path is the Game patch.
+    if (_loaded)
+    {
+      Clock.Stop("quit");
     }
   }
 

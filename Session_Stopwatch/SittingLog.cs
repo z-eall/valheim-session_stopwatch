@@ -11,18 +11,20 @@ namespace Session_Stopwatch;
 internal static class SittingLog
 {
   private static readonly string Dir = Path.Combine(Paths.ConfigPath, "session_stopwatch");
-  private static readonly string PathFile = Path.Combine(Dir, "session_stopwatch_log.yaml");
+  private static readonly string FilePath = Path.Combine(Dir, "session_stopwatch_log.yaml");
+
+  internal static string PathFile => FilePath;
 
   internal static List<Sitting> LoadHistory()
   {
     var list = new List<Sitting>();
-    if (!File.Exists(PathFile))
+    if (!File.Exists(FilePath))
     {
       return list;
     }
 
     Sitting? current = null;
-    foreach (var raw in File.ReadAllLines(PathFile))
+    foreach (var raw in File.ReadAllLines(FilePath))
     {
       var line = raw.TrimEnd();
       if (line.Length == 0 || line[0] == '#')
@@ -77,7 +79,7 @@ internal static class SittingLog
       Append(sb, open);
     }
 
-    File.WriteAllText(PathFile, sb.ToString(), Encoding.UTF8);
+    File.WriteAllText(FilePath, sb.ToString(), Encoding.UTF8);
   }
 
   private static void Flush(List<Sitting> list, ref Sitting? current)
@@ -140,9 +142,20 @@ internal static class SittingLog
       d = day.Date;
     }
 
-    if (key == "time" && DateTime.TryParseExact(val, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var clock))
+    if (key == "time")
     {
-      t = clock.TimeOfDay;
+      // Accept "HH:mm" or "HH:mm (UTC+8)".
+      var hm = val;
+      var sp = val.IndexOf(' ');
+      if (sp > 0)
+      {
+        hm = val.Substring(0, sp);
+      }
+
+      if (DateTime.TryParseExact(hm, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var clock))
+      {
+        t = clock.TimeOfDay;
+      }
     }
 
     sitting.StartedLocal = d + t;

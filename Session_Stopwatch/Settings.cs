@@ -6,18 +6,19 @@ namespace Session_Stopwatch;
 
 /// <summary>
 /// Player prefs in <c>session_stopwatch.cfg</c> (HUD writes the same entries).
-/// Advanced Log levels only for LogOutput / debug — AFK + park are also on the HUD.
+/// Advanced Log levels + Park schema only for LogOutput / internals — AFK + park XY are player-facing.
 /// </summary>
 internal static class Settings
 {
   internal const string SectionGeneral = "1 - General";
+  internal const string SectionInternal = "9 - Internal";
   internal const string SectionLogging = "10. Logging";
 
   internal const int AfkStepSeconds = 30;
   internal const int AfkMaxSeconds = 1800;
   internal const int DefaultAfkSeconds = 120;
 
-  /// <summary>Screen-space top-left of the pebble. Negative X = snap below minimap once.</summary>
+  /// <summary>Screen-space top-left of the pebble. Negative = optional snap under minimap.</summary>
   internal const float DefaultHudX = -1f;
   internal const float DefaultHudY = -1f;
 
@@ -29,6 +30,10 @@ internal static class Settings
   private static ConfigEntry<int> _afkTimeoutSeconds = null!;
   private static ConfigEntry<float> _hudX = null!;
   private static ConfigEntry<float> _hudY = null!;
+  private static ConfigEntry<int> _parkSchema = null!;
+
+  /// <summary>Bumped when default park math changes — forces one under-minimap snap (no manual -1).</summary>
+  private const int CurrentParkSchema = 2;
 
   internal static int AfkTimeoutSeconds
   {
@@ -46,8 +51,8 @@ internal static class Settings
     }
   }
 
-  /// <summary>True until the player has a saved park (both axes non-negative).</summary>
-  internal static bool NeedsDefaultPark => _hudX.Value < 0f || _hudY.Value < 0f;
+  /// <summary>Optional cfg reset: either axis negative means “snap under minimap”.</summary>
+  internal static bool WantsMinimapSnap => _hudX.Value < 0f || _hudY.Value < 0f;
 
   internal static void Init(ConfigFile config)
   {
@@ -56,19 +61,39 @@ internal static class Settings
       "AFK timeout seconds",
       DefaultAfkSeconds,
       new ConfigDescription(
-        "No qualifying input for this many seconds counts as AFK (0 = off, max 1800). HUD steps by 30.",
+        "Seconds with no input before time counts as AFK while a session is running.\n" +
+        "0 turns AFK tracking off.\n" +
+        "Max 1800. The panel steps this by 30.",
         new AcceptableValueRange<int>(0, AfkMaxSeconds)));
     _hudX = config.Bind(SectionGeneral, "HUD X", DefaultHudX,
-      "Pebble X (pixels from left). Negative = snap below minimap on first load.");
+      "Where the clock sits on screen (from the left).\n" +
+      "Drag the clock to change this.\n" +
+      "Set HUD X or HUD Y to -1 to put the clock back under the minimap.");
     _hudY = config.Bind(SectionGeneral, "HUD Y", DefaultHudY,
-      "Pebble Y (pixels from top). Negative = snap below minimap on first load.");
+      "Where the clock sits on screen (from the top).\n" +
+      "Drag the clock to change this.\n" +
+      "Set HUD X or HUD Y to -1 to put the clock back under the minimap.");
+    // Section 9 + Advanced (not player-facing). Default = current so a section move does not re-snap.
+    _parkSchema = config.Bind(SectionInternal, "Park schema", CurrentParkSchema,
+      new ConfigDescription(
+        "Internal. Raised when the default under-minimap position changes; moves the clock there once.",
+        tags: new object[] { new ConfigurationManagerAttributes { Order = 1, IsAdvanced = true } }));
+
+    if (_parkSchema.Value < CurrentParkSchema)
+    {
+      _hudX.Value = DefaultHudX;
+      _hudY.Value = DefaultHudY;
+      _parkSchema.Value = CurrentParkSchema;
+      SessionStopwatchPlugin.LogAt(LogLevel.Info,
+        $"Park schema → {CurrentParkSchema}: forcing under-minimap snap (no manual -1 needed).");
+    }
 
     LogLevels = config.Bind(
       SectionLogging,
       "Log levels",
       DefaultLogLevels,
       new ConfigDescription(
-        "Same flags as BepInEx Logging.Disk / Logging.Console. Tick Debug for sitting and AFK traces.",
+        "Same flags as BepInEx Logging.Disk / Logging.Console. Sitting and AFK traces are Debug; they only reach LogOutput.log when Debug is checked here and in BepInEx.cfg.",
         tags: new object[] { new ConfigurationManagerAttributes { Order = 1, IsAdvanced = true } }));
 
     config.SettingChanged += OnSettingChanged;
@@ -78,6 +103,7 @@ internal static class Settings
     LogLoaded(_afkTimeoutSeconds);
     LogLoaded(_hudX);
     LogLoaded(_hudY);
+    LogLoaded(_parkSchema);
   }
 
   private static void OnSettingChanged(object sender, SettingChangedEventArgs args)

@@ -19,12 +19,16 @@ internal static class Clock
     "Forward", "Backward", "Left", "Right", "Jump", "Run", "Crouch", "Attack", "Block", "AutoRun"
   };
 
+  /// <summary>Open-sitting yaml rewrite interval (10 minutes).</summary>
+  private const float OpenRewriteIntervalSeconds = 600f;
+
   private static List<Sitting> _history = new();
   private static Sitting? _open;
   private static bool _manualPaused;
   private static float _secondsSinceInput;
   private static string _awayReason = "";
   private static bool _wasFocused = true;
+  private static float _sinceOpenRewrite;
 
   internal static bool HasSitting => _open != null;
   internal static bool ManualPaused => _manualPaused;
@@ -40,10 +44,13 @@ internal static class Clock
     _secondsSinceInput = 0f;
     _awayReason = "";
     _wasFocused = true;
+    _sinceOpenRewrite = 0f;
     IsTicking = false;
     SessionStopwatchPlugin.LogAt(LogLevel.Info, $"Loaded {_history.Count} sitting(s) from yaml.");
     SessionStopwatchPlugin.LogAt(LogLevel.Info,
       $"ZInput GetJoyRightStickX(bool)={(JoyRightX != null)} GetJoyRightStickY(bool)={(JoyRightY != null)}.");
+    SessionStopwatchPlugin.LogAt(LogLevel.Info,
+      $"Open-sitting rewrite interval={OpenRewriteIntervalSeconds:0}s.");
   }
 
   internal static void Start()
@@ -74,6 +81,7 @@ internal static class Clock
     _manualPaused = false;
     _secondsSinceInput = 0f;
     _awayReason = "";
+    _sinceOpenRewrite = 0f;
     SessionStopwatchPlugin.LogAt(LogLevel.Info, $"Sitting started character={_open.Character} world={_open.World}.");
   }
 
@@ -88,7 +96,7 @@ internal static class Clock
     SessionStopwatchPlugin.LogAt(LogLevel.Info, "Sitting paused (manual).");
   }
 
-  internal static void Stop()
+  internal static void Stop(string reason = "stop")
   {
     if (_open == null)
     {
@@ -103,10 +111,11 @@ internal static class Clock
     _open = null;
     _manualPaused = false;
     _awayReason = "";
+    _sinceOpenRewrite = 0f;
     IsTicking = false;
     SittingLog.Write(_history, null);
     SessionStopwatchPlugin.LogAt(LogLevel.Info,
-      $"Sitting stopped active={active} inactive={inactive} total={total} history={_history.Count}.");
+      $"Sitting stopped reason={reason} active={active} inactive={inactive} total={total} history={_history.Count} path={SittingLog.PathFile}.");
   }
 
   internal static void Tick(float unscaledDt)
@@ -123,7 +132,6 @@ internal static class Clock
     }
 
     var focused = Application.isFocused;
-    // After alt-tab back, AFK idle must recount from zero (clockTest3 569→570).
     if (focused && !_wasFocused)
     {
       _secondsSinceInput = 0f;
@@ -164,6 +172,15 @@ internal static class Clock
     {
       _open.ActiveSeconds += unscaledDt;
     }
+
+    _sinceOpenRewrite += unscaledDt;
+    if (_sinceOpenRewrite >= OpenRewriteIntervalSeconds)
+    {
+      _sinceOpenRewrite = 0f;
+      Flush();
+      SessionStopwatchPlugin.LogAt(LogLevel.Info,
+        $"Open sitting rewritten ({OpenRewriteIntervalSeconds:0}s) active={SittingLog.FormatDuration(_open.ActiveSeconds)} inactive={SittingLog.FormatDuration(_open.InactiveSeconds)} total={SittingLog.FormatDuration(_open.TotalSeconds)}.");
+    }
   }
 
   private static void Flush()
@@ -178,7 +195,6 @@ internal static class Clock
 
   private static bool HasQualifyingInput()
   {
-    // HUD interaction is presence (mouse delta may be zeroed by our capture patches).
     if (ClockGui.PointerOver || ClockGui.Dragging)
     {
       return true;
