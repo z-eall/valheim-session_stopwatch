@@ -2,11 +2,42 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "node ../../.cursor/hooks/guard-mod-feature-build.js"
+            "command": "node \"${CLAUDE_PROJECT_DIR}/../../.claude/hooks/guard-drift-allow.js\""
+          }
+        ],
+        "matcher": "Bash|PowerShell"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/../../.claude/hooks/guard-drift-session-start.js\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/../../.claude/hooks/guard-drift-stamp-writer.js\""
+          }
+        ],
+        "matcher": "Bash|PowerShell"
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/../../.claude/hooks/guard-drift-session-start.js\""
           }
         ]
       }
