@@ -14,7 +14,6 @@ internal sealed class Sitting
 
   internal string DateStamp => StartedLocal.ToString("yyyy-MM-dd");
 
-  /// <summary>Local wall clock at Start, with UTC offset e.g. <c>00:26 (UTC+8)</c>.</summary>
   internal string TimeStamp
   {
     get

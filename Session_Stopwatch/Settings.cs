@@ -4,10 +4,12 @@ using UnityEngine;
 
 namespace Session_Stopwatch;
 
-/// <summary>
-/// Player prefs in <c>session_stopwatch.cfg</c> (HUD writes the same entries).
-/// Advanced Log levels + Park schema only for LogOutput / internals — AFK + park XY are player-facing.
-/// </summary>
+internal enum DefaultView
+{
+  Expanded,
+  Collapsed
+}
+
 internal static class Settings
 {
   internal const string SectionGeneral = "1 - General";
@@ -18,7 +20,6 @@ internal static class Settings
   internal const int AfkMaxSeconds = 1800;
   internal const int DefaultAfkSeconds = 120;
 
-  /// <summary>Screen-space top-left of the pebble. Negative = optional snap under minimap.</summary>
   internal const float DefaultHudX = -1f;
   internal const float DefaultHudY = -1f;
 
@@ -27,12 +28,13 @@ internal static class Settings
 
   internal static ConfigEntry<LogLevel>? LogLevels { get; private set; }
 
+  private static ConfigEntry<bool> _autoStart = null!;
+  private static ConfigEntry<DefaultView> _defaultView = null!;
   private static ConfigEntry<int> _afkTimeoutSeconds = null!;
   private static ConfigEntry<float> _hudX = null!;
   private static ConfigEntry<float> _hudY = null!;
   private static ConfigEntry<int> _parkSchema = null!;
 
-  /// <summary>Bumped when default park math changes — forces one under-minimap snap (no manual -1).</summary>
   private const int CurrentParkSchema = 2;
 
   internal static int AfkTimeoutSeconds
@@ -40,6 +42,14 @@ internal static class Settings
     get => Mathf.Clamp(_afkTimeoutSeconds.Value, 0, AfkMaxSeconds);
     set => _afkTimeoutSeconds.Value = Mathf.Clamp(value, 0, AfkMaxSeconds);
   }
+
+  internal static bool AutoStart
+  {
+    get => _autoStart.Value;
+    set => _autoStart.Value = value;
+  }
+
+  internal static bool StartCollapsed => _defaultView.Value == DefaultView.Collapsed;
 
   internal static Vector2 HudPosition
   {
@@ -51,11 +61,23 @@ internal static class Settings
     }
   }
 
-  /// <summary>Optional cfg reset: either axis negative means “snap under minimap”.</summary>
   internal static bool WantsMinimapSnap => _hudX.Value < 0f || _hudY.Value < 0f;
 
   internal static void Init(ConfigFile config)
   {
+    _autoStart = config.Bind(
+      SectionGeneral,
+      "Auto start",
+      false,
+      "Start the clock when your character first spawns after you load a world.\n" +
+      "Stop and Start still work by hand.\n" +
+      "The clock panel has the same switch.");
+    _defaultView = config.Bind(
+      SectionGeneral,
+      "Default view",
+      DefaultView.Expanded,
+      "How the clock panel looks when you load a world.\n" +
+      "Expanded shows the buttons. Collapsed shows only the small clock.");
     _afkTimeoutSeconds = config.Bind(
       SectionGeneral,
       "AFK timeout seconds",
@@ -73,7 +95,7 @@ internal static class Settings
       "Where the clock sits on screen (from the top).\n" +
       "Drag the clock to change this.\n" +
       "Set HUD X or HUD Y to -1 to put the clock back under the minimap.");
-    // Section 9 + Advanced (not player-facing). Default = current so a section move does not re-snap.
+
     _parkSchema = config.Bind(SectionInternal, "Park schema", CurrentParkSchema,
       new ConfigDescription(
         "Internal. Raised when the default under-minimap position changes; moves the clock there once.",
@@ -100,6 +122,8 @@ internal static class Settings
     config.ConfigReloaded += (_, _) => SessionStopwatchPlugin.LogAt(LogLevel.Info, "Config reloaded.");
 
     LogLoaded(LogLevels);
+    LogLoaded(_autoStart);
+    LogLoaded(_defaultView);
     LogLoaded(_afkTimeoutSeconds);
     LogLoaded(_hudX);
     LogLoaded(_hudY);
@@ -123,7 +147,6 @@ internal static class Settings
   }
 }
 
-/// <summary>Dummy type Configuration Manager looks for on <see cref="ConfigDescription.Tags"/>.</summary>
 internal sealed class ConfigurationManagerAttributes
 {
   public int? Order = null;

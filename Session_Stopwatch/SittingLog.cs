@@ -7,7 +7,6 @@ using BepInEx;
 
 namespace Session_Stopwatch;
 
-/// <summary>Hand-rolled list-of-maps yaml (spec shape). No YamlDotNet.</summary>
 internal static class SittingLog
 {
   private static readonly string Dir = Path.Combine(Paths.ConfigPath, "session_stopwatch");
@@ -144,7 +143,6 @@ internal static class SittingLog
 
     if (key == "time")
     {
-      // Accept "HH:mm" or "HH:mm (UTC+8)".
       var hm = val;
       var sp = val.IndexOf(' ');
       if (sp > 0)

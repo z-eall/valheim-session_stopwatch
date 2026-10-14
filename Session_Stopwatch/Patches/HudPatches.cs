@@ -23,7 +23,6 @@ internal static class PlayerController_TakeInput_Patch
 {
   private static void Postfix(bool look, ref bool __result)
   {
-    // Block both look and Attack/controls — look-only left bomb throws through (clockTest4).
     if (HudCapture.Active)
     {
       __result = false;
@@ -115,10 +114,6 @@ internal static class ZInput_GetButtonDown_Patch
   }
 }
 
-/// <summary>
-/// IMGUI draws on top but EventSystem still hits Skills/inventory under the clock.
-/// Explicit arg types — bare Raycast name is ambiguous (clockTest5 AmbiguousMatchException killed PatchAll).
-/// </summary>
 [HarmonyPatch(typeof(GraphicRaycaster), nameof(GraphicRaycaster.Raycast),
   new[] { typeof(PointerEventData), typeof(List<RaycastResult>) })]
 internal static class GraphicRaycaster_Raycast_Patch

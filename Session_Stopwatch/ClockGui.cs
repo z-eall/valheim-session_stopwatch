@@ -2,22 +2,18 @@ using UnityEngine;
 
 namespace Session_Stopwatch;
 
-/// <summary>
-/// Separate floating pebble (always) + optional panel beside it (IMGUI).
-/// Pebble is the park/drag/fold control; panel never moves the pebble.
-/// </summary>
 internal static class ClockGui
 {
   private const int PebbleId = 0x53535731;
   private const int PanelId = 0x53535732;
   private const float Pebble = 48f;
-  /// <summary>Content width: three 64px buttons + button margins + box pad (was 252 — fat L/R).</summary>
+
   private const float PanelW = 204f;
-  private const float PanelH = 96f;
+  private const float PanelH = 118f;
   private const float Gap = 6f;
   private const float RowH = 22f;
   private const float RowGap = 3f;
-  /// <summary>Gap below minimap bottom (clockTest4: +100 from original 12).</summary>
+
   private const float MinimapGapY = 112f;
 
   private static readonly Color Bg = new(0.07f, 0.07f, 0.08f, 0.92f);
@@ -47,6 +43,9 @@ internal static class ClockGui
   private static Texture2D? _texStop;
   private static Texture2D? _texGlyph;
   private static Texture2D? _texRing;
+  private static bool _menuWasOpen;
+  private static bool _foldBeforeMenu;
+  private static bool _toggledInMenu;
   private static bool _dragged;
   private static Vector2 _posAtMouseDown;
   private static bool _minimapSnapDone;
@@ -70,10 +69,13 @@ internal static class ClockGui
       _minimapSnapDone = false;
       _minimapSnapSince = -1f;
       _pebblePosReady = false;
-      // Next world load starts expanded (F1 hint visible); park still from cfg.
-      UiState.Folded = false;
+      UiState.Folded = Settings.StartCollapsed;
+      _menuWasOpen = false;
+      _toggledInMenu = false;
       return;
     }
+
+    TrackMenu();
 
     EnsureStyles();
     EnsurePark();
@@ -112,11 +114,34 @@ internal static class ClockGui
     PointerOver = _pebble.Contains(screenMouse) || (!UiState.Folded && _panel.Contains(screenMouse));
   }
 
+  private static void TrackMenu()
+  {
+    var open = Menu.IsVisible();
+    if (open == _menuWasOpen)
+    {
+      return;
+    }
+
+    if (open)
+    {
+      _foldBeforeMenu = UiState.Folded;
+      _toggledInMenu = false;
+      UiState.Folded = false;
+    }
+    else if (!_toggledInMenu)
+    {
+      UiState.Folded = _foldBeforeMenu;
+    }
+
+    _menuWasOpen = open;
+    SessionStopwatchPlugin.LogAt(BepInEx.Logging.LogLevel.Debug,
+      open ? "Esc menu opened: panel expanded." : "Esc menu closed.");
+  }
+
   private static void EnsurePark()
   {
     if (_minimapSnapDone)
     {
-      // CM Reset / typing -1 mid-session: allow another snap.
       if (Settings.WantsMinimapSnap)
       {
         _minimapSnapDone = false;
@@ -168,11 +193,6 @@ internal static class ClockGui
     }
   }
 
-  /// <summary>
-  /// Align pebble <b>right edge</b> to small-minimap <b>right edge</b>
-  /// (<see cref="Minimap.m_mapImageSmall"/> world corners: 3 = bottom-right).
-  /// Writes real positive X/Y into cfg (so CM Reset to -1 then snap does not stay at -1).
-  /// </summary>
   private static Vector2? TryBelowMinimap()
   {
     if (Minimap.instance == null || Minimap.instance.m_mapImageSmall == null)
@@ -248,6 +268,7 @@ internal static class ClockGui
         if (!_dragged)
         {
           UiState.Folded = !UiState.Folded;
+          _toggledInMenu = _menuWasOpen;
           SessionStopwatchPlugin.LogAt(BepInEx.Logging.LogLevel.Debug,
             UiState.Folded ? "HUD folded." : "HUD unfolded.");
         }
@@ -342,6 +363,19 @@ internal static class ClockGui
 
     GUILayout.BeginHorizontal(GUILayout.Height(RowH));
     GUILayout.FlexibleSpace();
+    GUILayout.Label("Auto start", _label, GUILayout.Width(70f), GUILayout.Height(RowH));
+    var autoStart = Settings.AutoStart;
+    if (GUILayout.Button(autoStart ? "On" : "Off", autoStart ? _btnPlay : _btn,
+      GUILayout.Width(64f), GUILayout.Height(RowH)))
+    {
+      Settings.AutoStart = !autoStart;
+    }
+
+    GUILayout.FlexibleSpace();
+    GUILayout.EndHorizontal();
+
+    GUILayout.BeginHorizontal(GUILayout.Height(RowH));
+    GUILayout.FlexibleSpace();
     GUILayout.Label("Ctrl+F1 shows the cursor", _hint, GUILayout.Height(RowH));
     GUILayout.FlexibleSpace();
     GUILayout.EndHorizontal();
@@ -371,7 +405,6 @@ internal static class ClockGui
     _texGlyph = Solid(Glyph);
     _texRing = BakeRing(Glyph);
 
-    // box (not window) — avoids IMGUI title-bar dead space that inflated bottom/side margins.
     _box = new GUIStyle(GUI.skin.box)
     {
       normal = { background = _texBg, textColor = Color.white },

@@ -1,25 +1,17 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using BepInEx.Logging;
-using HarmonyLib;
 using UnityEngine;
 
 namespace Session_Stopwatch;
 
 internal static class Clock
 {
-  private static readonly MethodInfo? JoyRightX =
-    AccessTools.Method(typeof(ZInput), "GetJoyRightStickX", new[] { typeof(bool) });
-  private static readonly MethodInfo? JoyRightY =
-    AccessTools.Method(typeof(ZInput), "GetJoyRightStickY", new[] { typeof(bool) });
-
   private static readonly string[] Buttons =
   {
     "Forward", "Backward", "Left", "Right", "Jump", "Run", "Crouch", "Attack", "Block", "AutoRun"
   };
 
-  /// <summary>Open-sitting yaml rewrite interval (10 minutes).</summary>
   private const float OpenRewriteIntervalSeconds = 600f;
 
   private static List<Sitting> _history = new();
@@ -47,8 +39,6 @@ internal static class Clock
     _sinceOpenRewrite = 0f;
     IsTicking = false;
     SessionStopwatchPlugin.LogAt(LogLevel.Info, $"Loaded {_history.Count} sitting(s) from yaml.");
-    SessionStopwatchPlugin.LogAt(LogLevel.Info,
-      $"ZInput GetJoyRightStickX(bool)={(JoyRightX != null)} GetJoyRightStickY(bool)={(JoyRightY != null)}.");
     SessionStopwatchPlugin.LogAt(LogLevel.Info,
       $"Open-sitting rewrite interval={OpenRewriteIntervalSeconds:0}s.");
   }
@@ -215,8 +205,8 @@ internal static class Clock
       return true;
     }
 
-    if (Mathf.Abs(ZInput.GetJoyLeftStickX(false)) > 0.01f || Mathf.Abs(ZInput.GetJoyLeftStickY(true)) > 0.01f
-        || Mathf.Abs(ReadStick(JoyRightX, true)) > 0.01f || Mathf.Abs(ReadStick(JoyRightY, true)) > 0.01f)
+    if (Mathf.Abs(ZInput.GetJoyLeftStickX()) > 0.01f || Mathf.Abs(ZInput.GetJoyLeftStickY()) > 0.01f
+        || Mathf.Abs(ZInput.GetJoyRightStickX()) > 0.01f || Mathf.Abs(ZInput.GetJoyRightStickY()) > 0.01f)
     {
       return true;
     }
@@ -231,15 +221,5 @@ internal static class Clock
 
     var player = Player.m_localPlayer;
     return player != null && player.m_autoRun;
-  }
-
-  private static float ReadStick(MethodInfo? method, bool smooth)
-  {
-    if (method == null)
-    {
-      return 0f;
-    }
-
-    return (float)method.Invoke(null, new object[] { smooth });
   }
 }
