@@ -13,11 +13,10 @@ internal enum DefaultView
 internal static class Settings
 {
   internal const string SectionGeneral = "1 - General";
-  internal const string SectionInternal = "9 - Internal";
   internal const string SectionLogging = "10. Logging";
 
   internal const int AfkStepSeconds = 30;
-  internal const int AfkMaxSeconds = 1800;
+  internal const int AfkMaxSeconds = 600;
   internal const int DefaultAfkSeconds = 120;
 
   internal const float DefaultHudX = -1f;
@@ -33,9 +32,6 @@ internal static class Settings
   private static ConfigEntry<int> _afkTimeoutSeconds = null!;
   private static ConfigEntry<float> _hudX = null!;
   private static ConfigEntry<float> _hudY = null!;
-  private static ConfigEntry<int> _parkSchema = null!;
-
-  private const int CurrentParkSchema = 2;
 
   internal static int AfkTimeoutSeconds
   {
@@ -71,13 +67,13 @@ internal static class Settings
       false,
       "Start the clock when your character first spawns after you load a world.\n" +
       "Stop and Start still work by hand.\n" +
-      "The clock panel has the same switch.");
+      "The panel has the same switch.");
     _defaultView = config.Bind(
       SectionGeneral,
       "Default view",
       DefaultView.Expanded,
-      "How the clock panel looks when you load a world.\n" +
-      "Expanded shows the buttons. Collapsed shows only the small clock.");
+      "How the panel looks when you load a world.\n" +
+      "Expanded shows the buttons. Collapsed shows only the timer.");
     _afkTimeoutSeconds = config.Bind(
       SectionGeneral,
       "AFK timeout seconds",
@@ -85,30 +81,16 @@ internal static class Settings
       new ConfigDescription(
         "Seconds with no input before time counts as AFK while a session is running.\n" +
         "0 turns AFK tracking off.\n" +
-        "Max 1800. The panel steps this by 30.",
+        "Max 600 (10 minutes). The panel steps this by 30.",
         new AcceptableValueRange<int>(0, AfkMaxSeconds)));
-    _hudX = config.Bind(SectionGeneral, "HUD X", DefaultHudX,
-      "Where the clock sits on screen (from the left).\n" +
-      "Drag the clock to change this.\n" +
-      "Set HUD X or HUD Y to -1 to put the clock back under the minimap.");
-    _hudY = config.Bind(SectionGeneral, "HUD Y", DefaultHudY,
-      "Where the clock sits on screen (from the top).\n" +
-      "Drag the clock to change this.\n" +
-      "Set HUD X or HUD Y to -1 to put the clock back under the minimap.");
-
-    _parkSchema = config.Bind(SectionInternal, "Park schema", CurrentParkSchema,
-      new ConfigDescription(
-        "Internal. Raised when the default under-minimap position changes; moves the clock there once.",
-        tags: new object[] { new ConfigurationManagerAttributes { Order = 1, IsAdvanced = true } }));
-
-    if (_parkSchema.Value < CurrentParkSchema)
-    {
-      _hudX.Value = DefaultHudX;
-      _hudY.Value = DefaultHudY;
-      _parkSchema.Value = CurrentParkSchema;
-      SessionStopwatchPlugin.LogAt(LogLevel.Info,
-        $"Park schema → {CurrentParkSchema}: forcing under-minimap snap (no manual -1 needed).");
-    }
+    _hudX = config.Bind(SectionGeneral, "Panel X", DefaultHudX,
+      "Where the panel sits on screen (from the left).\n" +
+      "Drag the panel to change this.\n" +
+      "Set Panel X or Panel Y to -1 to put the panel back under the minimap.");
+    _hudY = config.Bind(SectionGeneral, "Panel Y", DefaultHudY,
+      "Where the panel sits on screen (from the top).\n" +
+      "Drag the panel to change this.\n" +
+      "Set Panel X or Panel Y to -1 to put the panel back under the minimap.");
 
     LogLevels = config.Bind(
       SectionLogging,
@@ -127,7 +109,6 @@ internal static class Settings
     LogLoaded(_afkTimeoutSeconds);
     LogLoaded(_hudX);
     LogLoaded(_hudY);
-    LogLoaded(_parkSchema);
   }
 
   private static void OnSettingChanged(object sender, SettingChangedEventArgs args)

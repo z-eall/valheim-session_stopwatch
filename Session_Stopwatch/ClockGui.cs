@@ -1,48 +1,62 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Session_Stopwatch;
 
 internal static class ClockGui
 {
-  private const int PebbleId = 0x53535731;
-  private const int PanelId = 0x53535732;
-  private const float Pebble = 48f;
+  private const int WindowId = 0x53535731;
 
-  private const float PanelW = 204f;
-  private const float PanelH = 118f;
-  private const float Gap = 6f;
-  private const float RowH = 22f;
-  private const float RowGap = 3f;
+  private const float W = 170f;
+  private const float Pad = 5f;
+  private const float TimerH = 28f;
+  private const float Btn = 22f;
+  private const float RowGap = 4f;
+  private const float OptionsH = (2f * Btn) + (2f * RowGap);
+  private const float CollapsedH = TimerH + (2f * Pad);
+  private const float ExpandedH = CollapsedH + OptionsH;
 
   private const float MinimapGapY = 112f;
 
-  private static readonly Color Bg = new(0.07f, 0.07f, 0.08f, 0.92f);
-  private static readonly Color PlayOn = new(0.2f, 0.55f, 0.28f, 1f);
-  private static readonly Color PauseOn = new(0.7f, 0.55f, 0.12f, 1f);
-  private static readonly Color StopCol = new(0.65f, 0.22f, 0.18f, 1f);
-  private static readonly Color Dim = new(0.22f, 0.2f, 0.18f, 1f);
-  private static readonly Color Glyph = new(0.92f, 0.9f, 0.82f, 1f);
+  private static readonly Color Bg = new(0.145f, 0.145f, 0.145f, 0.85f);
+  private static readonly Color PlayOn = new(0.561f, 0.682f, 0.416f, 1f);
+  private static readonly Color PauseOn = new(0.808f, 0.675f, 0.322f, 1f);
+  private static readonly Color StopCol = new(0.647f, 0.278f, 0.306f, 1f);
+  private static readonly Color AutoOn = new(0.302f, 0.439f, 0.773f, 1f);
+  private static readonly Color Dim = new(0.360f, 0.360f, 0.360f, 1f);
+  private static readonly Color TimerBg = new(0.360f, 0.360f, 0.360f, 1f);
+  private static readonly Color TextCol = new(0.949f, 0.949f, 0.949f, 1f);
+  private static readonly Color Text2Col = new(0.604f, 0.604f, 0.604f, 1f);
+  private static readonly Color DarkOnGreen = new(0.11f, 0.14f, 0.06f, 1f);
+  private static readonly Color DarkOnGold = new(0.11f, 0.086f, 0.031f, 1f);
 
-  private static Rect _pebble;
-  private static Rect _panel;
-  private static Vector2 _pebblePos;
-  private static bool _pebblePosReady;
+  private static Rect _window;
+  private static Vector2 _pos;
+  private static bool _posReady;
+  private static bool _flipUp;
   private static bool _stylesReady;
   private static GUIStyle _box = null!;
   private static GUIStyle _label = null!;
+  private static GUIStyle _value = null!;
   private static GUIStyle _time = null!;
   private static GUIStyle _btn = null!;
   private static GUIStyle _btnPlay = null!;
   private static GUIStyle _btnPause = null!;
   private static GUIStyle _btnStop = null!;
+  private static GUIStyle _btnAuto = null!;
+  private static GUIStyle _btnAfk = null!;
+  private static GUIStyle _btnAs = null!;
+  private static GUIStyle _tipBox = null!;
+  private static GUIStyle _tipText = null!;
+  private static string _tipNext = "";
   private static GUIStyle _hint = null!;
+  private static Texture2D? _texTriangle;
   private static Texture2D? _texBg;
   private static Texture2D? _texDim;
   private static Texture2D? _texPlay;
   private static Texture2D? _texPause;
   private static Texture2D? _texStop;
-  private static Texture2D? _texGlyph;
-  private static Texture2D? _texRing;
+  private static Texture2D? _texAuto;
+  private static Texture2D? _texTimerBg;
   private static bool _menuWasOpen;
   private static bool _foldBeforeMenu;
   private static bool _toggledInMenu;
@@ -56,7 +70,7 @@ internal static class ClockGui
 
   private static bool OffScreen(Vector2 pos)
   {
-    return pos.x < -Pebble || pos.y < -Pebble
+    return pos.x < -W || pos.y < -CollapsedH
       || pos.x > Screen.width || pos.y > Screen.height;
   }
 
@@ -68,7 +82,7 @@ internal static class ClockGui
       Dragging = false;
       _minimapSnapDone = false;
       _minimapSnapSince = -1f;
-      _pebblePosReady = false;
+      _posReady = false;
       UiState.Folded = Settings.StartCollapsed;
       _menuWasOpen = false;
       _toggledInMenu = false;
@@ -80,38 +94,40 @@ internal static class ClockGui
     EnsureStyles();
     EnsurePark();
 
-    if (!_pebblePosReady)
+    if (!_posReady)
     {
       var saved = Settings.HudPosition;
-      _pebblePos = OffScreen(saved) || Settings.WantsMinimapSnap
-        ? new Vector2(Mathf.Max(20f, Screen.width - 80f), 220f)
-        : saved;
-      _pebblePosReady = true;
+      _pos = OffScreen(saved) || Settings.WantsMinimapSnap
+        ? new Vector2(Mathf.Max(20f, Screen.width - W - 20f), 220f)
+        : new Vector2(Mathf.Clamp(saved.x, 0f, Screen.width - W), saved.y);
+      _posReady = true;
     }
 
-    _pebble = new Rect(_pebblePos.x, _pebblePos.y, Pebble, Pebble);
-
-    var prev = GUI.backgroundColor;
-    GUI.backgroundColor = Bg;
-    _pebble = GUI.Window(PebbleId, _pebble, DrawPebbleWindow, GUIContent.none, _box);
-    GUI.backgroundColor = prev;
-
-    _pebblePos = _pebble.position;
     if (!Dragging)
     {
-      PersistPebble(_pebblePos);
+      _flipUp = _pos.y + ExpandedH > Screen.height - 8f && _pos.y - OptionsH >= 0f;
     }
 
-    if (!UiState.Folded)
+    var up = !UiState.Folded && _flipUp;
+    _window = new Rect(
+      _pos.x,
+      up ? _pos.y - OptionsH : _pos.y,
+      W,
+      UiState.Folded ? CollapsedH : ExpandedH);
+
+    var tip = _tipNext;
+    _tipNext = "";
+    _window = GUI.Window(WindowId, _window, DrawWindow, GUIContent.none, _box);
+    DrawTooltip(tip);
+
+    _pos = new Vector2(_window.x, up ? _window.y + OptionsH : _window.y);
+    if (!Dragging)
     {
-      PlacePanelBesidePebble();
-      GUI.backgroundColor = Bg;
-      _panel = GUI.Window(PanelId, _panel, DrawPanelWindow, GUIContent.none, _box);
-      GUI.backgroundColor = prev;
+      Persist(_pos);
     }
 
     var screenMouse = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
-    PointerOver = _pebble.Contains(screenMouse) || (!UiState.Folded && _panel.Contains(screenMouse));
+    PointerOver = _window.Contains(screenMouse);
   }
 
   private static void TrackMenu()
@@ -170,8 +186,8 @@ internal static class ClockGui
     if (below.HasValue)
     {
       Settings.HudPosition = below.Value;
-      _pebblePos = below.Value;
-      _pebblePosReady = true;
+      _pos = below.Value;
+      _posReady = true;
       _minimapSnapDone = true;
       return;
     }
@@ -182,14 +198,14 @@ internal static class ClockGui
     }
 
     _minimapSnapDone = true;
-    if (!_pebblePosReady)
+    if (!_posReady)
     {
-      var fallback = new Vector2(Mathf.Max(20f, Screen.width - 80f), 220f);
+      var fallback = new Vector2(Mathf.Max(20f, Screen.width - W - 20f), 220f);
       Settings.HudPosition = fallback;
-      _pebblePos = fallback;
-      _pebblePosReady = true;
+      _pos = fallback;
+      _posReady = true;
       SessionStopwatchPlugin.LogAt(BepInEx.Logging.LogLevel.Info,
-        "HUD park fallback (minimap not ready); drag the pebble if needed.");
+        "HUD park fallback (minimap not ready); drag the timer if needed.");
     }
   }
 
@@ -210,19 +226,19 @@ internal static class ClockGui
     map.GetWorldCorners(corners);
     var mapRightX = corners[3].x;
     var mapBottomGuiY = Screen.height - corners[0].y;
-    var pebbleX = mapRightX - Pebble;
-    var pebbleY = mapBottomGuiY + MinimapGapY;
+    var x = mapRightX - W;
+    var y = mapBottomGuiY + MinimapGapY;
     var pos = new Vector2(
-      Mathf.Clamp(pebbleX, 8f, Screen.width - Pebble - 8f),
-      Mathf.Clamp(pebbleY, 8f, Screen.height - Pebble - 8f));
+      Mathf.Clamp(x, 8f, Screen.width - W - 8f),
+      Mathf.Clamp(y, 8f, Screen.height - CollapsedH - 8f));
 
     SessionStopwatchPlugin.LogAt(BepInEx.Logging.LogLevel.Info,
       $"HUD park from minimap: mapRightX={mapRightX:0.#} mapBottomGuiY={mapBottomGuiY:0.#} " +
-      $"pebbleTL=({pos.x:0},{pos.y:0}) pebbleRight={pos.x + Pebble:0} gapY={MinimapGapY} screen={Screen.width}x{Screen.height}.");
+      $"timerTL=({pos.x:0},{pos.y:0}) timerRight={pos.x + W:0} gapY={MinimapGapY} screen={Screen.width}x{Screen.height}.");
     return pos;
   }
 
-  private static void PersistPebble(Vector2 pos)
+  private static void Persist(Vector2 pos)
   {
     if (!_minimapSnapDone && (Settings.WantsMinimapSnap || OffScreen(Settings.HudPosition)))
     {
@@ -236,151 +252,208 @@ internal static class ClockGui
     }
   }
 
-  private static void PlacePanelBesidePebble()
+  private static void DrawWindow(int id)
   {
-    var openLeft = _pebble.center.x >= Screen.width * 0.5f;
-    _panel = openLeft
-      ? new Rect(_pebble.x - Gap - PanelW, _pebble.y, PanelW, PanelH)
-      : new Rect(_pebble.xMax + Gap, _pebble.y, PanelW, PanelH);
+    var up = !UiState.Folded && _flipUp;
+    var timerY = up ? Pad + OptionsH : Pad;
+
+    var timerRect = new Rect(Pad, timerY, W - (2f * Pad), TimerH);
+    GUI.DrawTexture(timerRect, _texTimerBg);
+    GUI.Label(timerRect, Clock.ActiveDisplay, _time);
+
+    if (!UiState.Folded)
+    {
+      DrawOptions(up ? Pad : Pad + TimerH + RowGap);
+    }
+
+    var whole = new Rect(0f, 0f, _window.width, _window.height);
+    HandleMouse(whole);
+    GUI.DragWindow(whole);
   }
 
-  private static void DrawPebbleWindow(int id)
+  private static void HandleMouse(Rect area)
   {
     var e = Event.current;
-    if (e != null && e.button == 0)
-    {
-      if (e.type == EventType.MouseDown)
-      {
-        _posAtMouseDown = _pebble.position;
-        _dragged = false;
-        Dragging = true;
-      }
-      else if (e.type == EventType.MouseDrag || e.type == EventType.MouseUp)
-      {
-        if ((_pebble.position - _posAtMouseDown).sqrMagnitude > 16f)
-        {
-          _dragged = true;
-        }
-      }
-
-      if (e.type == EventType.MouseUp)
-      {
-        if (!_dragged)
-        {
-          UiState.Folded = !UiState.Folded;
-          _toggledInMenu = _menuWasOpen;
-          SessionStopwatchPlugin.LogAt(BepInEx.Logging.LogLevel.Debug,
-            UiState.Folded ? "HUD folded." : "HUD unfolded.");
-        }
-
-        Dragging = false;
-        PersistPebble(_pebble.position);
-        e.Use();
-      }
-    }
-
-    DrawClockGlyph(new Rect(6f, 6f, Pebble - 12f, Pebble - 12f));
-    GUI.DragWindow(new Rect(0f, 0f, Pebble, Pebble));
-  }
-
-  private static void DrawClockGlyph(Rect area)
-  {
-    if (_texRing != null)
-    {
-      GUI.DrawTexture(area, _texRing);
-    }
-
-    if (_texGlyph == null)
+    if (e == null || e.button != 0)
     {
       return;
     }
 
-    var cx = area.x + area.width * 0.5f;
-    var cy = area.y + area.height * 0.5f;
-    var sec = (int)Clock.ActiveSeconds;
-    var ang = (sec % 60) / 60f * 360f;
-    var matrix = GUI.matrix;
-    GUIUtility.RotateAroundPivot(ang, new Vector2(cx, cy));
-    GUI.DrawTexture(new Rect(cx - 1f, cy - area.height * 0.32f, 2f, area.height * 0.32f), _texGlyph);
-    GUI.matrix = matrix;
-    GUI.DrawTexture(new Rect(cx - 2f, cy - 2f, 4f, 4f), _texGlyph);
+    if (e.type == EventType.MouseDown && area.Contains(e.mousePosition))
+    {
+      _posAtMouseDown = _window.position;
+      _dragged = false;
+      Dragging = true;
+      return;
+    }
+
+    if (!Dragging)
+    {
+      return;
+    }
+
+    if (e.type == EventType.MouseDrag || e.type == EventType.MouseUp)
+    {
+      if ((_window.position - _posAtMouseDown).sqrMagnitude > 16f)
+      {
+        _dragged = true;
+      }
+    }
+
+    if (e.type == EventType.MouseUp)
+    {
+      if (!_dragged)
+      {
+        UiState.Folded = !UiState.Folded;
+        _toggledInMenu = _menuWasOpen;
+        SessionStopwatchPlugin.LogAt(BepInEx.Logging.LogLevel.Debug,
+          UiState.Folded ? "HUD folded." : "HUD unfolded.");
+      }
+
+      Dragging = false;
+      e.Use();
+    }
   }
 
-  private static void DrawPanelWindow(int id)
+  private static void DrawOptions(float top)
   {
-    GUILayout.BeginVertical();
+    const float AfkW = 44f;
+    var left = Pad;
+    var right = W - Pad;
+    var gap = (right - left - (4f * Btn) - AfkW) / 4f;
+    var pitch = Btn + gap;
 
-    GUILayout.BeginHorizontal(GUILayout.Height(RowH));
-    GUILayout.FlexibleSpace();
-    GUILayout.Label(Clock.ActiveDisplay, _time, GUILayout.Height(RowH));
-    GUILayout.FlexibleSpace();
-    GUILayout.EndHorizontal();
-
-    GUILayout.BeginHorizontal(GUILayout.Height(RowH));
-    GUILayout.FlexibleSpace();
+    var y = top;
     var ticking = Clock.IsTicking;
-    var paused = Clock.HasSitting && !ticking;
-    if (GUILayout.Button("►", ticking ? _btnPlay : _btn, GUILayout.Height(RowH), GUILayout.Width(64f)))
+    var hasSitting = Clock.HasSitting;
+    var paused = hasSitting && !ticking;
+
+    var startRect = new Rect(left, y, Btn, Btn);
+    var startTip = ticking ? "Timer is running" : paused ? "Resume the timer" : "Start the timer";
+    if (GUI.Button(startRect, GUIContent.none, ticking ? _btnPlay : _btn))
     {
-      if (!Clock.HasSitting || Clock.ManualPaused || !Clock.IsTicking)
+      if (!hasSitting || Clock.ManualPaused || !ticking)
       {
         Clock.Start();
       }
     }
 
-    if (GUILayout.Button("||", paused ? _btnPause : _btn, GUILayout.Height(RowH), GUILayout.Width(64f)))
+    DrawGlyph(startRect, 0, ticking ? DarkOnGreen : TextCol);
+    Hover(startRect, startTip);
+
+    var pauseRect = new Rect(Mathf.Round(left + pitch), y, Btn, Btn);
+    var pauseTip = ticking ? "Pause the timer" : paused ? "Timer is paused" : "Nothing to pause";
+    if (GUI.Button(pauseRect, GUIContent.none, paused ? _btnPause : _btn))
     {
       Clock.Pause();
     }
 
-    if (GUILayout.Button("■", _btnStop, GUILayout.Height(RowH), GUILayout.Width(64f)))
+    DrawGlyph(pauseRect, 1, paused ? DarkOnGold : TextCol);
+    Hover(pauseRect, pauseTip);
+
+    var stopRect = new Rect(Mathf.Round(left + (2f * pitch)), y, Btn, Btn);
+    var stopTip = hasSitting ? "Stop and save this sitting" : "Nothing to stop";
+    if (GUI.Button(stopRect, GUIContent.none, _btnStop))
     {
       Clock.Stop("stop");
     }
 
-    GUILayout.FlexibleSpace();
-    GUILayout.EndHorizontal();
+    DrawGlyph(stopRect, 2, TextCol);
+    Hover(stopRect, stopTip);
 
-    GUILayout.Space(RowGap);
-
-    GUILayout.BeginHorizontal(GUILayout.Height(RowH));
-    GUILayout.FlexibleSpace();
-    GUILayout.Label("AFK timer", _label, GUILayout.Width(70f), GUILayout.Height(RowH));
-    if (GUILayout.Button("-", _btn, GUILayout.Width(22f), GUILayout.Height(RowH)))
-    {
-      NudgeAfk(-Settings.AfkStepSeconds);
-    }
-
-    GUILayout.Label(SittingLog.FormatDuration(Settings.AfkTimeoutSeconds), _label,
-      GUILayout.Width(64f), GUILayout.Height(RowH));
-    if (GUILayout.Button("+", _btn, GUILayout.Width(22f), GUILayout.Height(RowH)))
-    {
-      NudgeAfk(Settings.AfkStepSeconds);
-    }
-
-    GUILayout.FlexibleSpace();
-    GUILayout.EndHorizontal();
-
-    GUILayout.BeginHorizontal(GUILayout.Height(RowH));
-    GUILayout.FlexibleSpace();
-    GUILayout.Label("Auto start", _label, GUILayout.Width(70f), GUILayout.Height(RowH));
     var autoStart = Settings.AutoStart;
-    if (GUILayout.Button(autoStart ? "On" : "Off", autoStart ? _btnPlay : _btn,
-      GUILayout.Width(64f), GUILayout.Height(RowH)))
+    var autoRect = new Rect(Mathf.Round(left + (3f * pitch)), y, Btn, Btn);
+    var autoTip = autoStart ? "Auto start is on. Click to turn off" : "Auto start is off. Click to turn on";
+    if (GUI.Button(autoRect, "AS", autoStart ? _btnAuto : _btnAs))
     {
       Settings.AutoStart = !autoStart;
     }
 
-    GUILayout.FlexibleSpace();
-    GUILayout.EndHorizontal();
+    Hover(autoRect, autoTip);
 
-    GUILayout.BeginHorizontal(GUILayout.Height(RowH));
-    GUILayout.FlexibleSpace();
-    GUILayout.Label("Ctrl+F1 shows the cursor", _hint, GUILayout.Height(RowH));
-    GUILayout.FlexibleSpace();
-    GUILayout.EndHorizontal();
+    var afk = Settings.AfkTimeoutSeconds;
+    var afkRect = new Rect(right - AfkW, y, AfkW, Btn);
+    var afkTip = afk == 0
+      ? "AFK check is off. Scroll to set the time"
+      : $"AFK after {FormatAfk(afk)} idle. Scroll to change";
+    GUI.Button(afkRect, FormatAfk(afk), _btnAfk);
+    Hover(afkRect, afkTip);
 
-    GUILayout.EndVertical();
+    var e = Event.current;
+    if (e != null && e.type == EventType.ScrollWheel && afkRect.Contains(e.mousePosition))
+    {
+      NudgeAfk(e.delta.y < 0f ? Settings.AfkStepSeconds : -Settings.AfkStepSeconds);
+      e.Use();
+    }
+
+    y += Btn + RowGap;
+    GUI.Label(new Rect(left, y, W - (2f * Pad), Btn), "Ctrl+F1 shows the cursor", _hint);
+  }
+
+  private static void Hover(Rect rect, string tip)
+  {
+    var e = Event.current;
+    if (e != null && rect.Contains(e.mousePosition))
+    {
+      _tipNext = tip;
+    }
+  }
+
+  private static void DrawGlyph(Rect btn, int kind, Color color)
+  {
+    var cx = btn.x + (Btn / 2f);
+    var cy = btn.y + (Btn / 2f);
+    var prev = GUI.color;
+    GUI.color = color;
+    if (kind == 0)
+    {
+      GUI.DrawTexture(new Rect(cx - 4f, cy - 6f, 10f, 12f), _texTriangle);
+    }
+    else if (kind == 1)
+    {
+      GUI.DrawTexture(new Rect(cx - 4f, cy - 4f, 3f, 8f), Texture2D.whiteTexture);
+      GUI.DrawTexture(new Rect(cx + 1f, cy - 4f, 3f, 8f), Texture2D.whiteTexture);
+    }
+    else
+    {
+      GUI.DrawTexture(new Rect(cx - 5f, cy - 5f, 10f, 10f), Texture2D.whiteTexture);
+    }
+
+    GUI.color = prev;
+  }
+
+  private static void DrawTooltip(string tip)
+  {
+    var id = WindowId + 1;
+    if (string.IsNullOrEmpty(tip) || Event.current == null)
+    {
+      return;
+    }
+
+    var mouse = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+    var size = _tipText.CalcSize(new GUIContent(tip)) + new Vector2(12f, 6f);
+    var x = mouse.x + 16f;
+    if (x + size.x > Screen.width - 4f)
+    {
+      x = mouse.x - 12f - size.x;
+    }
+
+    var y = mouse.y + 20f;
+    if (y + size.y > Screen.height - 4f)
+    {
+      y = mouse.y - 8f - size.y;
+    }
+
+    GUI.Window(id, new Rect(x, y, size.x, size.y), _ =>
+    {
+      GUI.Label(new Rect(6f, 3f, size.x - 12f, size.y - 6f), tip, _tipText);
+    }, GUIContent.none, _tipBox);
+    GUI.BringWindowToFront(id);
+  }
+
+  private static string FormatAfk(int seconds)
+  {
+    return seconds <= 0 ? "OFF" : $"{seconds / 60:00}:{seconds % 60:00}";
   }
 
   private static void NudgeAfk(int delta)
@@ -402,49 +475,82 @@ internal static class ClockGui
     _texPlay = Solid(PlayOn);
     _texPause = Solid(PauseOn);
     _texStop = Solid(StopCol);
-    _texGlyph = Solid(Glyph);
-    _texRing = BakeRing(Glyph);
+    _texAuto = Solid(AutoOn);
+    _texTimerBg = Solid(TimerBg);
+    _texTriangle = Triangle();
 
     _box = new GUIStyle(GUI.skin.box)
     {
       normal = { background = _texBg, textColor = Color.white },
       onNormal = { background = _texBg, textColor = Color.white },
       border = new RectOffset(1, 1, 1, 1),
-      padding = new RectOffset(3, 3, 3, 3),
+      padding = new RectOffset(0, 0, 0, 0),
       margin = new RectOffset(0, 0, 0, 0),
       overflow = new RectOffset(0, 0, 0, 0)
     };
 
     _label = new GUIStyle(GUI.skin.label)
     {
-      alignment = TextAnchor.MiddleCenter,
+      alignment = TextAnchor.MiddleLeft,
       fontSize = 12,
       padding = new RectOffset(0, 0, 0, 0),
       margin = new RectOffset(0, 0, 0, 0),
-      normal = { textColor = new Color(0.9f, 0.88f, 0.8f) }
+      normal = { textColor = TextGamma(TextCol) }
     };
 
-    _time = new GUIStyle(_label) { fontSize = 16, fontStyle = FontStyle.Bold };
+    _value = new GUIStyle(_label) { alignment = TextAnchor.MiddleRight };
+
+    _time = new GUIStyle(_label)
+    {
+      fontSize = 18,
+      fontStyle = FontStyle.Bold,
+      alignment = TextAnchor.MiddleCenter
+    };
 
     _hint = new GUIStyle(_label)
     {
-      fontSize = 12,
-      fontStyle = FontStyle.Bold,
-      normal = { textColor = new Color(0.92f, 0.88f, 0.55f) }
+      fontSize = 11,
+      alignment = TextAnchor.MiddleCenter,
+      normal = { textColor = TextGamma(PauseOn) }
     };
 
-    _btn = ButtonStyle(_texDim, Color.white);
-    _btnPlay = ButtonStyle(_texPlay, Color.white);
-    _btnPause = ButtonStyle(_texPause, Color.white);
-    _btnStop = ButtonStyle(_texStop, Color.white);
+    _tipBox = new GUIStyle(_box)
+    {
+      normal = { background = Solid(new Color(0f, 0f, 0f, 0.92f)), textColor = Color.white },
+      onNormal = { background = Solid(new Color(0f, 0f, 0f, 0.92f)), textColor = Color.white }
+    };
+
+    _tipText = new GUIStyle(GUI.skin.label)
+    {
+      fontSize = 11,
+      alignment = TextAnchor.MiddleLeft,
+      wordWrap = false,
+      padding = new RectOffset(0, 0, 0, 0),
+      margin = new RectOffset(0, 0, 0, 0),
+      normal = { textColor = TextGamma(Color.white) }
+    };
+
+    _btn = ButtonStyle(_texDim, TextCol);
+    _btnPlay = ButtonStyle(_texPlay, DarkOnGreen);
+    _btnPause = ButtonStyle(_texPause, DarkOnGold);
+    _btnStop = ButtonStyle(_texStop, TextCol);
+    _btnAuto = ButtonStyle(_texAuto, TextCol, 9);
+    _btnAs = ButtonStyle(_texDim, TextCol, 9);
+    _btnAfk = ButtonStyle(_texDim, PauseOn);
     _stylesReady = true;
   }
 
-  private static GUIStyle ButtonStyle(Texture2D? bg, Color text)
+  private static Color TextGamma(Color c)
   {
+    return c.gamma;
+  }
+
+  private static GUIStyle ButtonStyle(Texture2D? bg, Color text, int fontSize = 12)
+  {
+    text = TextGamma(text);
     return new GUIStyle(GUI.skin.button)
     {
-      fontSize = 13,
+      fontSize = fontSize,
       fontStyle = FontStyle.Bold,
       alignment = TextAnchor.MiddleCenter,
       normal = { background = bg, textColor = text },
@@ -452,37 +558,33 @@ internal static class ClockGui
       active = { background = bg, textColor = text },
       onNormal = { background = bg, textColor = text },
       padding = new RectOffset(0, 0, 0, 0),
-      margin = new RectOffset(1, 1, 0, 0)
+      margin = new RectOffset(0, 0, 0, 0)
     };
+  }
+
+  private static Texture2D Triangle()
+  {
+    const int N = 32;
+    var t = new Texture2D(N, N, TextureFormat.ARGB32, false) { filterMode = FilterMode.Bilinear };
+    var px = new Color[N * N];
+    for (var yy = 0; yy < N; yy++)
+    {
+      var limit = N * (1f - (Mathf.Abs(yy + 0.5f - (N / 2f)) / (N / 2f)));
+      for (var xx = 0; xx < N; xx++)
+      {
+        px[(yy * N) + xx] = xx + 0.5f <= limit ? Color.white : new Color(1f, 1f, 1f, 0f);
+      }
+    }
+
+    t.SetPixels(px);
+    t.Apply();
+    return t;
   }
 
   private static Texture2D Solid(Color c)
   {
     var t = new Texture2D(2, 2, TextureFormat.ARGB32, false);
     t.SetPixels(new[] { c, c, c, c });
-    t.Apply();
-    return t;
-  }
-
-  private static Texture2D BakeRing(Color c)
-  {
-    const int n = 64;
-    var t = new Texture2D(n, n, TextureFormat.ARGB32, false);
-    var clear = new Color(0, 0, 0, 0);
-    var cx = (n - 1) * 0.5f;
-    var outer = cx - 1f;
-    var inner = outer - 3.5f;
-    for (var y = 0; y < n; y++)
-    {
-      for (var x = 0; x < n; x++)
-      {
-        var dx = x - cx;
-        var dy = y - cx;
-        var r = Mathf.Sqrt((dx * dx) + (dy * dy));
-        t.SetPixel(x, y, r <= outer && r >= inner ? c : clear);
-      }
-    }
-
     t.Apply();
     return t;
   }
