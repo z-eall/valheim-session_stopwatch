@@ -25,6 +25,14 @@ File: `BepInEx/config/session_stopwatch.cfg`.
 
 Log file: `BepInEx/config/session_stopwatch/session_stopwatch_log.yaml`. Open sessions update it every 10 minutes. Stop, logout, and exit save right away.
 
+Each sitting takes three lines: character and world, start time with the AFK after value, then Active, Inactive and Total.
+
+```
+Cornboy (Halloween26)
+2026-09-24 15:36 UTC+8 · AFK after 01:30
+Active 02:07:08 · Inactive 00:06:38 · Total 02:13:46
+```
+
 ## Credits
 
 Source: [<img src="https://cdn.simpleicons.org/github/181717" width="16" height="16" alt="" /> GitHub](https://github.com/z-eall/valheim-session_stopwatch)

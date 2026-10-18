@@ -9,6 +9,7 @@ internal sealed class Sitting
   internal string World { get; set; } = "";
   internal float ActiveSeconds { get; set; }
   internal float InactiveSeconds { get; set; }
+  internal int AfkSeconds { get; set; }
 
   internal float TotalSeconds => ActiveSeconds + InactiveSeconds;
 
@@ -24,7 +25,7 @@ internal sealed class Sitting
       var tz = abs.Minutes == 0
         ? $"UTC{sign}{(int)abs.TotalHours}"
         : $"UTC{sign}{(int)abs.TotalHours}:{abs.Minutes:D2}";
-      return $"{StartedLocal:HH:mm} ({tz})";
+      return $"{StartedLocal:HH:mm} {tz}";
     }
   }
 }

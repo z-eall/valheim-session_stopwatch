@@ -11,7 +11,7 @@ namespace Session_Stopwatch;
 public class SessionStopwatchPlugin : BaseUnityPlugin
 {
   internal const string ModName = "Session_Stopwatch";
-  internal const string ModVersion = "0.3.0";
+  internal const string ModVersion = "0.3.1";
 
   internal const string ModGUID = "session_stopwatch";
 

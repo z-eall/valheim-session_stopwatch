@@ -66,7 +66,8 @@ internal static class Clock
     {
       StartedLocal = DateTime.Now,
       Character = profile != null ? profile.GetName() : "",
-      World = ZNet.instance.GetWorldName() ?? ""
+      World = ZNet.instance.GetWorldName() ?? "",
+      AfkSeconds = Settings.AfkTimeoutSeconds
     };
     _manualPaused = false;
     _secondsSinceInput = 0f;
@@ -180,6 +181,7 @@ internal static class Clock
       return;
     }
 
+    _open.AfkSeconds = Settings.AfkTimeoutSeconds;
     SittingLog.Write(_history, _open);
   }
 

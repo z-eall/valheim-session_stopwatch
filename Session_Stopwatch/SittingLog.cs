@@ -12,6 +12,9 @@ internal static class SittingLog
   private static readonly string Dir = Path.Combine(Paths.ConfigPath, "session_stopwatch");
   private static readonly string FilePath = Path.Combine(Dir, "session_stopwatch_log.yaml");
 
+  private const string Sep = " · ";
+  private const int EntryRows = 3;
+
   internal static string PathFile => FilePath;
 
   internal static List<Sitting> LoadHistory()
@@ -23,6 +26,7 @@ internal static class SittingLog
     }
 
     Sitting? current = null;
+    var row = EntryRows;
     foreach (var raw in File.ReadAllLines(FilePath))
     {
       var line = raw.TrimEnd();
@@ -31,17 +35,42 @@ internal static class SittingLog
         continue;
       }
 
-      if (line.StartsWith("- ", StringComparison.Ordinal))
+      if (line.StartsWith("- date:", StringComparison.Ordinal))
       {
         Flush(list, ref current);
         current = new Sitting();
         Apply(current, line.Substring(2));
+        row = EntryRows;
         continue;
       }
 
-      if (current != null && line.Length >= 2 && line[0] == ' ' && line[1] == ' ')
+      if (line.StartsWith("  ", StringComparison.Ordinal))
       {
-        Apply(current, line.TrimStart());
+        if (current != null)
+        {
+          Apply(current, line.TrimStart());
+        }
+
+        continue;
+      }
+
+      if (current == null || row >= EntryRows)
+      {
+        Flush(list, ref current);
+        current = new Sitting();
+        ParseHeader(current, line);
+        row = 1;
+        continue;
+      }
+
+      row++;
+      if (row == 2)
+      {
+        ParseStartRow(current, line);
+      }
+      else
+      {
+        ParseTimeRow(current, line);
       }
     }
 
@@ -92,13 +121,71 @@ internal static class SittingLog
 
   private static void Append(StringBuilder sb, Sitting sitting)
   {
-    sb.AppendLine($"- date: {sitting.DateStamp}");
-    sb.AppendLine($"  time: {sitting.TimeStamp}");
-    sb.AppendLine($"  character: {Quote(sitting.Character)}");
-    sb.AppendLine($"  world: {Quote(sitting.World)}");
-    sb.AppendLine($"  active: {FormatDuration(sitting.ActiveSeconds)}");
-    sb.AppendLine($"  inactive: {FormatDuration(sitting.InactiveSeconds)}");
-    sb.AppendLine($"  total: {FormatDuration(sitting.TotalSeconds)}");
+    sb.AppendLine($"{sitting.Character} ({sitting.World})");
+    sb.AppendLine($"{sitting.DateStamp} {sitting.TimeStamp}{Sep}AFK after {FormatAfk(sitting.AfkSeconds)}");
+    sb.AppendLine($"Active {FormatDuration(sitting.ActiveSeconds)}{Sep}Inactive {FormatDuration(sitting.InactiveSeconds)}{Sep}Total {FormatDuration(sitting.TotalSeconds)}");
+  }
+
+  private static void ParseHeader(Sitting sitting, string line)
+  {
+    var open = line.EndsWith(")", StringComparison.Ordinal) ? line.LastIndexOf(" (", StringComparison.Ordinal) : -1;
+    if (open < 0)
+    {
+      sitting.Character = line;
+      return;
+    }
+
+    sitting.Character = line.Substring(0, open);
+    sitting.World = line.Substring(open + 2, line.Length - open - 3);
+  }
+
+  private static void ParseStartRow(Sitting sitting, string line)
+  {
+    var parts = line.Split(new[] { Sep }, StringSplitOptions.None);
+    var start = parts[0].Split(' ');
+    MergeStart(sitting, "date", start[0]);
+    if (start.Length > 1)
+    {
+      MergeStart(sitting, "time", start[1]);
+    }
+
+    if (parts.Length > 1)
+    {
+      sitting.AfkSeconds = ParseAfk(parts[1].Substring(parts[1].LastIndexOf(' ') + 1));
+    }
+  }
+
+  private static void ParseTimeRow(Sitting sitting, string line)
+  {
+    foreach (var part in line.Split(new[] { Sep }, StringSplitOptions.None))
+    {
+      var space = part.IndexOf(' ');
+      if (space < 0)
+      {
+        continue;
+      }
+
+      var val = ParseDuration(part.Substring(space + 1));
+      if (part.StartsWith("Active", StringComparison.Ordinal))
+      {
+        sitting.ActiveSeconds = val;
+      }
+      else if (part.StartsWith("Inactive", StringComparison.Ordinal))
+      {
+        sitting.InactiveSeconds = val;
+      }
+    }
+  }
+
+  private static string FormatAfk(int seconds)
+  {
+    return seconds <= 0 ? "Off" : $"{seconds / 60:00}:{seconds % 60:00}";
+  }
+
+  private static int ParseAfk(string val)
+  {
+    var parts = val.Split(':');
+    return parts.Length == 2 && int.TryParse(parts[0], out var m) && int.TryParse(parts[1], out var s) ? (m * 60) + s : 0;
   }
 
   private static void Apply(Sitting sitting, string body)
@@ -182,21 +269,6 @@ internal static class SittingLog
     }
 
     return (h * 3600) + (m * 60) + s;
-  }
-
-  private static string Quote(string s)
-  {
-    if (string.IsNullOrEmpty(s))
-    {
-      return "\"\"";
-    }
-
-    if (s.IndexOfAny(new[] { ':', '#', '"', '\n' }) >= 0 || s.StartsWith(" ") || s.EndsWith(" "))
-    {
-      return "\"" + s.Replace("\"", "\\\"") + "\"";
-    }
-
-    return s;
   }
 
   private static string Unquote(string s)
